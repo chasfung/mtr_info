@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>MTR Dashboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -23,7 +26,7 @@
       display: flex;
       flex-direction: column;
       height: 100%;
-      gap: 2px; /* 縮小間距，確保5行都能顯示 */
+      gap: 2px;
     }
 
     .card {
@@ -34,8 +37,8 @@
       justify-content: space-between;
       align-items: center;
       padding: 0 6px; 
-      flex: 1; /* 自動適應剩餘空間 */
-      min-height: 0; /* 關鍵：防止內容撐破容器高度 */
+      flex: 1;
+      min-height: 0;
     }
 
     .left-box {
@@ -79,7 +82,7 @@
       padding-right: 4px;
       margin-top: 2px;
       height: 12px;
-      flex-shrink: 0; /* 確保更新時間不會被擠壓消失 */
+      flex-shrink: 0;
     }
   </style>
 </head>
@@ -126,12 +129,11 @@
 
   <script>
     async function fetchMTR(line, station) {
-      // 關鍵修復：加上時間戳 (?t=...) 強制伺服器抓取最新數據，避免被快取阻擋
-      const t = new Date().getTime();
-      const targetUrl = `https://rt.data.gov.hk/v1/transport/mtr/getSchedule.php?line=${line}&sta=${station}&t=${t}`;
+      // 移除干擾參數，還原官方乾淨網址
+      const url = `https://rt.data.gov.hk/v1/transport/mtr/getSchedule.php?line=${line}&sta=${station}`;
       
       try {
-        const res = await fetch(targetUrl, { cache: 'no-store' });
+        const res = await fetch(url, { cache: 'no-store' });
         if (res.ok) {
           const data = await res.json();
           if (data.status === 1 && data.data[`${line}-${station}`]) {
@@ -140,12 +142,13 @@
         }
       } catch (e) {}
 
-      // 備援：透過代理伺服器抓取
+      // 升級版代理：使用 /get 解析 JSON，避免被 SenseCraft 攔截
       try {
-        const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
+        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
         const resProxy = await fetch(proxyUrl, { cache: 'no-store' });
         if (resProxy.ok) {
-          const proxyData = await resProxy.json();
+          const wrapper = await resProxy.json();
+          const proxyData = JSON.parse(wrapper.contents);
           if (proxyData.status === 1 && proxyData.data[`${line}-${station}`]) {
             return proxyData.data[`${line}-${station}`];
           }
@@ -156,18 +159,19 @@
     }
 
     function calculateFrequency(trainList) {
-      if (!trainList || trainList.length < 2) return null;
+      if (!trainList || trainList.length === 0) return `約 -- 分鐘`;
+      if (trainList.length === 1) return `約 ${trainList[0].ttnt} 分鐘`;
+      
       const t1 = parseInt(trainList[0].ttnt);
       const t2 = parseInt(trainList[1].ttnt);
       if (!isNaN(t1) && !isNaN(t2)) {
         const diff = Math.abs(t2 - t1);
         if (diff > 0) return `約 ${diff} 分鐘`;
       }
-      return null;
+      return `約 ${trainList[0].ttnt} 分鐘`; // 算術失敗時退回顯示下一班車
     }
 
     async function updateAllSchedules() {
-      // 強制香港時間 (UTC+8)
       const now = new Date();
       const hkTimeMs = now.getTime() + (8 * 3600000);
       const hkDate = new Date(hkTimeMs);
@@ -182,31 +186,16 @@
           fetchMTR('TML', 'HUH')
         ]);
 
-        if (ktlWha && ktlWha.UP) {
-          const res = calculateFrequency(ktlWha.UP);
-          if (res) document.getElementById('ktl-wha-tik').innerText = res;
-        }
-
+        if (ktlWha && ktlWha.UP) document.getElementById('ktl-wha-tik').innerText = calculateFrequency(ktlWha.UP);
+        
         if (ealHuh) {
-          if (ealHuh.DOWN) {
-            const res = calculateFrequency(ealHuh.DOWN);
-            if (res) document.getElementById('eal-huh-adm').innerText = res;
-          }
-          if (ealHuh.UP) {
-            const res = calculateFrequency(ealHuh.UP);
-            if (res) document.getElementById('eal-huh-north').innerText = res;
-          }
+          if (ealHuh.DOWN) document.getElementById('eal-huh-adm').innerText = calculateFrequency(ealHuh.DOWN);
+          if (ealHuh.UP) document.getElementById('eal-huh-north').innerText = calculateFrequency(ealHuh.UP);
         }
 
         if (tmlHuh) {
-          if (tmlHuh.UP) {
-            const res = calculateFrequency(tmlHuh.UP);
-            if (res) document.getElementById('tml-huh-tum').innerText = res;
-          }
-          if (tmlHuh.DOWN) {
-            const res = calculateFrequency(tmlHuh.DOWN);
-            if (res) document.getElementById('tml-huh-wks').innerText = res;
-          }
+          if (tmlHuh.UP) document.getElementById('tml-huh-tum').innerText = calculateFrequency(tmlHuh.UP);
+          if (tmlHuh.DOWN) document.getElementById('tml-huh-wks').innerText = calculateFrequency(tmlHuh.DOWN);
         }
       } catch (err) {}
     }
