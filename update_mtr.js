@@ -18,50 +18,56 @@ function fetchJSON(url) {
 async function fetchMTRData(line, sta) {
   const targetUrl = `https://rt.data.gov.hk/v1/transport/mtr/getSchedule.php?line=${line}&sta=${sta}`;
   
-  // 1. 優先直連官方 API (速度最快，唔怕被 Proxy 限速)
   let data = await fetchJSON(targetUrl);
-  if (data && data.status === 1) {
-    console.log(`[Direct] 成功抓取 ${line}-${sta}`);
-    return data;
-  }
+  if (data && data.status === 1) return data;
   
-  // 2. 備援 Proxy 1: AllOrigins
-  console.log(`[Direct] 失敗，嘗試 AllOrigins...`);
   let proxy1 = await fetchJSON(`https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`);
   if (proxy1 && proxy1.contents) {
     try {
       let parsed = JSON.parse(proxy1.contents);
-      if (parsed.status === 1) {
-        console.log(`[AllOrigins] 成功抓取 ${line}-${sta}`);
-        return parsed;
-      }
+      if (parsed.status === 1) return parsed;
     } catch(e) {}
   }
   
-  // 3. 備援 Proxy 2: CorsProxy
-  console.log(`[AllOrigins] 失敗，嘗試 CorsProxy...`);
   let proxy2 = await fetchJSON(`https://corsproxy.io/?${encodeURIComponent(targetUrl)}`);
-  if (proxy2 && proxy2.status === 1) {
-    console.log(`[CorsProxy] 成功抓取 ${line}-${sta}`);
-    return proxy2;
-  }
+  if (proxy2 && proxy2.status === 1) return proxy2;
   
-  console.log(`[Error] 所有連線方法均失敗 ${line}-${sta}`);
   return null;
 }
 
-// 提取 ETA，無懼資料缺失
-function getMinutes(trainList) {
+// 👑 班次密度算法（Train 2 - Train 1），附帶防呆機制
+function getFrequency(trainList) {
   if (!trainList || !Array.isArray(trainList) || trainList.length === 0) return '約 -- 分鐘';
   
-  for (let train of trainList) {
-    if (train.ttnt !== undefined && train.ttnt !== null && train.ttnt !== '') {
-      const ttnt = parseInt(train.ttnt);
-      if (!isNaN(ttnt)) {
-        return `約 ${ttnt} 分鐘`;
+  try {
+    // 正常情況：如果有 2 班車或以上，計算班次相隔時間
+    if (trainList.length >= 2) {
+      // 優先使用官方倒數分鐘 (ttnt) 相減
+      const ttnt1 = parseInt(trainList[0].ttnt);
+      const ttnt2 = parseInt(trainList[1].ttnt);
+      
+      if (!isNaN(ttnt1) && !isNaN(ttnt2)) {
+        const diff = Math.abs(ttnt2 - ttnt1);
+        if (diff > 0) return `約 ${diff} 分鐘`;
+      }
+      
+      // 備援：如果冇 ttnt，用絕對時間相減
+      if (trainList[0].time && trainList[1].time) {
+        const time1 = new Date(trainList[0].time.replace(' ', 'T') + '+08:00').getTime();
+        const time2 = new Date(trainList[1].time.replace(' ', 'T') + '+08:00').getTime();
+        const diff = Math.round(Math.abs(time2 - time1) / 60000);
+        if (!isNaN(diff) && diff > 0) return `約 ${diff} 分鐘`;
       }
     }
+    
+    // 極端情況：如果 API 只提供咗 1 班車，安全退回顯示該班車嘅 ETA
+    const ttnt = parseInt(trainList[0].ttnt);
+    if (!isNaN(ttnt)) return `約 ${ttnt} 分鐘`;
+
+  } catch (e) {
+    console.error('Calculation error:', e);
   }
+  
   return '約 -- 分鐘';
 }
 
@@ -77,12 +83,13 @@ async function fetchAll() {
   const h = String(hkTime.getUTCHours()).padStart(2, '0');
   const m = String(hkTime.getUTCMinutes()).padStart(2, '0');
 
+  // 使用班次密度算法計算
   const result = {
-    ktl_up: getMinutes(ktl?.data?.['KTL-WHA']?.UP),
-    eal_dn: getMinutes(eal?.data?.['EAL-HUH']?.DOWN),
-    eal_up: getMinutes(eal?.data?.['EAL-HUH']?.UP),
-    tml_up: getMinutes(tml?.data?.['TML-HUH']?.UP),
-    tml_dn: getMinutes(tml?.data?.['TML-HUH']?.DOWN),
+    ktl_up: getFrequency(ktl?.data?.['KTL-WHA']?.UP),
+    eal_dn: getFrequency(eal?.data?.['EAL-HUH']?.DOWN),
+    eal_up: getFrequency(eal?.data?.['EAL-HUH']?.UP),
+    tml_up: getFrequency(tml?.data?.['TML-HUH']?.UP),
+    tml_dn: getFrequency(tml?.data?.['TML-HUH']?.DOWN),
     update_time: `${h}:${m}`
   };
 
