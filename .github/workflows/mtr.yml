@@ -3,7 +3,7 @@ name: Auto Update MTR Data
 on:
   schedule:
     - cron: '*/5 * * * *' # 每 5 分鐘執行一次
-  workflow_dispatch: # 允許手動點擊執行
+  workflow_dispatch:
 
 jobs:
   update:
