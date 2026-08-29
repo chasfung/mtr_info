@@ -20,11 +20,9 @@ function fetchURL(url) {
 
 // 代理伺服器輪詢機制
 async function fetchWithProxy(url) {
-  // 嘗試 CorsProxy
   let data = await fetchURL(`https://corsproxy.io/?${encodeURIComponent(url)}`);
   if (data) return data;
 
-  // 嘗試 AllOrigins
   console.log('Proxy 1 failed, trying Proxy 2...');
   let proxy2Data = await fetchURL(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`);
   if (proxy2Data && proxy2Data.contents) {
@@ -35,16 +33,31 @@ async function fetchWithProxy(url) {
   return null;
 }
 
+// 👑 終極算法：親自提取兩班車嘅標準時間做減法，保證一定出「真實分鐘」！
 function calcFreq(trainList) {
-  if (!trainList || trainList.length === 0) return '約 -- 分鐘';
-  if (trainList.length === 1) return '約 ' + trainList[0].ttnt + ' 分鐘';
-  const t1 = parseInt(trainList[0].ttnt);
-  const t2 = parseInt(trainList[1].ttnt);
-  if (!isNaN(t1) && !isNaN(t2)) {
-    const diff = Math.abs(t2 - t1);
-    if (diff > 0) return '約 ' + diff + ' 分鐘';
+  if (!trainList || trainList.length < 2) return '約 -- 分鐘';
+  
+  try {
+    // 提取兩班車嘅實際到站時間 (例如 API 給的 "2024-08-29 20:25:00")
+    // 將空格換成 T，加上 +08:00，確保時區與計算絕對正確
+    const time1Str = trainList[0].time.replace(' ', 'T') + '+08:00';
+    const time2Str = trainList[1].time.replace(' ', 'T') + '+08:00';
+    
+    const t1 = new Date(time1Str).getTime();
+    const t2 = new Date(time2Str).getTime();
+    
+    if (!isNaN(t1) && !isNaN(t2)) {
+      // 計算兩班車相距嘅毫秒數，再除以 60000 變成「分鐘」
+      const diffMins = Math.round(Math.abs(t2 - t1) / 60000);
+      if (diffMins > 0) {
+        return '約 ' + diffMins + ' 分鐘';
+      }
+    }
+  } catch (e) {
+    console.log('Time calculation error:', e);
   }
-  return '約 ' + trainList[0].ttnt + ' 分鐘';
+  
+  return '約 -- 分鐘';
 }
 
 async function fetchMTR() {
