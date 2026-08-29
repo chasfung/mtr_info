@@ -3,6 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- 強制防快取，拒絕 SenseCraft 伺服器使用舊資料 -->
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>MTR Dashboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -85,61 +89,54 @@
 <body>
 
   <div class="container">
-    <!-- 1. 觀塘線 -->
     <div class="card">
       <div class="left-box">
         <span class="line-tag bg-ktl">觀塘線</span>
         <span class="dest-title">往 調景嶺</span>
       </div>
-      <div class="freq-info" id="ktl-wha-tik">約 3 分鐘</div>
+      <div class="freq-info" id="ktl-wha-tik">約 -- 分鐘</div>
     </div>
-
-    <!-- 2. 東鐵線 往金鐘 -->
     <div class="card">
       <div class="left-box">
         <span class="line-tag bg-eal">東鐵線</span>
         <span class="dest-title">往 金鐘</span>
       </div>
-      <div class="freq-info" id="eal-huh-adm">約 4 分鐘</div>
+      <div class="freq-info" id="eal-huh-adm">約 -- 分鐘</div>
     </div>
-
-    <!-- 3. 東鐵線 往邊境 -->
     <div class="card">
       <div class="left-box">
         <span class="line-tag bg-eal">東鐵線</span>
         <span class="dest-title">往 上水 / 邊境</span>
       </div>
-      <div class="freq-info" id="eal-huh-north">約 3 分鐘</div>
+      <div class="freq-info" id="eal-huh-north">約 -- 分鐘</div>
     </div>
-
-    <!-- 4. 屯馬線 往屯門 -->
     <div class="card">
       <div class="left-box">
         <span class="line-tag bg-tml">屯馬線</span>
         <span class="dest-title">往 屯門</span>
       </div>
-      <div class="freq-info" id="tml-huh-tum">約 3 分鐘</div>
+      <div class="freq-info" id="tml-huh-tum">約 -- 分鐘</div>
     </div>
-
-    <!-- 5. 屯馬線 往烏溪沙 -->
     <div class="card">
       <div class="left-box">
         <span class="line-tag bg-tml">屯馬線</span>
         <span class="dest-title">往 烏溪沙</span>
       </div>
-      <div class="freq-info" id="tml-huh-wks">約 4 分鐘</div>
+      <div class="freq-info" id="tml-huh-wks">約 -- 分鐘</div>
     </div>
-
     <div class="sub-text" id="update-time">更新: --:--</div>
   </div>
 
   <script>
     async function fetchMTR(line, station) {
-      const url = `https://rt.data.gov.hk/v1/transport/mtr/getSchedule.php?line=${line}&sta=${station}`;
+      // 關鍵修復：加入隨機時間戳 `?t=...` 強制伺服器每次都向港鐵索取最新數據
+      const t = new Date().getTime();
+      const url = `https://rt.data.gov.hk/v1/transport/mtr/getSchedule.php?line=${line}&sta=${station}&t=${t}`;
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 2500);
-        const response = await fetch(url, { signal: controller.signal });
+        // 設定 fetch 的 cache 為 no-store
+        const response = await fetch(url, { signal: controller.signal, cache: 'no-store' });
         clearTimeout(timeoutId);
         const data = await response.json();
         if (data.status === 1 && data.data[`${line}-${station}`]) {
@@ -161,15 +158,13 @@
     }
 
     async function updateAllSchedules() {
-      // 強制指定使用香港時區 (Asia/Hong_Kong) 及 24 小時制
+      // 強制香港時區 (UTC+8) 防止伺服器時差
       const now = new Date();
-      const hkTimeStr = now.toLocaleTimeString('en-GB', {
-        timeZone: 'Asia/Hong_Kong',
-        hour12: false,
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-      document.getElementById('update-time').innerText = `更新: ${hkTimeStr}`;
+      const hkTimeMs = now.getTime() + (8 * 3600000);
+      const hkDate = new Date(hkTimeMs);
+      const h = String(hkDate.getUTCHours()).padStart(2, '0');
+      const m = String(hkDate.getUTCMinutes()).padStart(2, '0');
+      document.getElementById('update-time').innerText = `更新: ${h}:${m}`;
 
       try {
         const [ktlWha, ealHuh, tmlHuh] = await Promise.all([
@@ -208,6 +203,8 @@
     }
 
     updateAllSchedules();
+    // 雙保險：每 30 秒自動重新抓取一次
+    setInterval(updateAllSchedules, 30000);
   </script>
 </body>
 </html>
