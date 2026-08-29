@@ -29,3 +29,4 @@ jobs:
           git add mtr_data.json
           git commit -m "Auto-update MTR data" || exit 0
           git push
+
