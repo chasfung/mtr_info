@@ -1,5 +1,29 @@
 const fs = require('fs');
 
+// 讓 GitHub 機器人使用代理伺服器，突破香港政府的海外 IP 封鎖
+async function fetchWithProxy(url) {
+  // 代理 1：CorsProxy
+  try {
+    const proxy1 = `https://corsproxy.io/?${encodeURIComponent(url)}`;
+    const res1 = await fetch(proxy1, { headers: { 'User-Agent': 'Mozilla/5.0' }});
+    if (res1.ok) return await res1.json();
+  } catch (e) {
+    console.log('Proxy 1 failed, trying Proxy 2...');
+  }
+
+  // 代理 2：AllOrigins 備援
+  try {
+    const proxy2 = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+    const res2 = await fetch(proxy2);
+    if (res2.ok) {
+      const wrapper = await res2.json();
+      return JSON.parse(wrapper.contents);
+    }
+  } catch (e) {}
+
+  return null;
+}
+
 function calcFreq(trainList) {
   if (!trainList || trainList.length === 0) return '約 -- 分鐘';
   if (trainList.length === 1) return '約 ' + trainList[0].ttnt + ' 分鐘';
@@ -15,11 +39,12 @@ function calcFreq(trainList) {
 async function fetchMTR() {
   try {
     const [ktl, eal, tml] = await Promise.all([
-      fetch('https://rt.data.gov.hk/v1/transport/mtr/getSchedule.php?line=KTL&sta=WHA').then(r=>r.json()).catch(()=>null),
-      fetch('https://rt.data.gov.hk/v1/transport/mtr/getSchedule.php?line=EAL&sta=HUH').then(r=>r.json()).catch(()=>null),
-      fetch('https://rt.data.gov.hk/v1/transport/mtr/getSchedule.php?line=TML&sta=HUH').then(r=>r.json()).catch(()=>null)
+      fetchWithProxy('https://rt.data.gov.hk/v1/transport/mtr/getSchedule.php?line=KTL&sta=WHA'),
+      fetchWithProxy('https://rt.data.gov.hk/v1/transport/mtr/getSchedule.php?line=EAL&sta=HUH'),
+      fetchWithProxy('https://rt.data.gov.hk/v1/transport/mtr/getSchedule.php?line=TML&sta=HUH')
     ]);
 
+    // 強制寫入香港時間 (UTC+8)
     const hkTime = new Date(Date.now() + 8 * 3600000);
     const h = String(hkTime.getUTCHours()).padStart(2, '0');
     const m = String(hkTime.getUTCMinutes()).padStart(2, '0');
