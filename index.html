@@ -3,9 +3,6 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <meta http-equiv="Pragma" content="no-cache">
-  <meta http-equiv="Expires" content="0">
   <title>MTR Dashboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -25,35 +22,34 @@
     .container {
       display: flex;
       flex-direction: column;
-      justify-content: space-between;
       height: 100%;
-      gap: 4px; /* 平均分配卡片間距 */
+      gap: 2px; /* 縮小間距，確保5行都能顯示 */
     }
 
-    /* 加粗邊框與字體，針對 E-Ink 螢幕優化 */
     .card {
       border: 2px solid #000000;
-      border-radius: 6px;
+      border-radius: 4px;
       background-color: #ffffff;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 2px 8px;
-      flex: 1; /* 自動填滿高度 */
+      padding: 0 6px; 
+      flex: 1; /* 自動適應剩餘空間 */
+      min-height: 0; /* 關鍵：防止內容撐破容器高度 */
     }
 
     .left-box {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
     }
 
     .line-tag {
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 900;
       color: #ffffff;
-      padding: 3px 6px;
-      border-radius: 4px;
+      padding: 2px 5px;
+      border-radius: 3px;
       white-space: nowrap;
     }
     .bg-ktl { background-color: #00af41; }
@@ -61,14 +57,14 @@
     .bg-tml { background-color: #923011; }
 
     .dest-title {
-      font-size: 15px;
+      font-size: 14px;
       font-weight: 900;
       color: #000000;
       white-space: nowrap;
     }
 
     .freq-info {
-      font-size: 17px;
+      font-size: 15px;
       font-weight: 900;
       color: #000000;
       text-align: right;
@@ -76,13 +72,14 @@
     }
 
     .sub-text {
-      font-size: 10px;
+      font-size: 9px;
       color: #666666;
       text-align: right;
       font-weight: 900;
       padding-right: 4px;
       margin-top: 2px;
       height: 12px;
+      flex-shrink: 0; /* 確保更新時間不會被擠壓消失 */
     }
   </style>
 </head>
@@ -128,11 +125,11 @@
   </div>
 
   <script>
-    // 雙重保險抓取機制：直連失敗自動轉用 AllOrigins 代理
     async function fetchMTR(line, station) {
-      const targetUrl = `https://rt.data.gov.hk/v1/transport/mtr/getSchedule.php?line=${line}&sta=${station}`;
+      // 關鍵修復：加上時間戳 (?t=...) 強制伺服器抓取最新數據，避免被快取阻擋
+      const t = new Date().getTime();
+      const targetUrl = `https://rt.data.gov.hk/v1/transport/mtr/getSchedule.php?line=${line}&sta=${station}&t=${t}`;
       
-      // 第一階段：嘗試直接連線
       try {
         const res = await fetch(targetUrl, { cache: 'no-store' });
         if (res.ok) {
@@ -143,7 +140,7 @@
         }
       } catch (e) {}
 
-      // 第二階段：SenseCraft 伺服器被阻擋時，透過代理伺服器抓取
+      // 備援：透過代理伺服器抓取
       try {
         const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
         const resProxy = await fetch(proxyUrl, { cache: 'no-store' });
@@ -170,7 +167,7 @@
     }
 
     async function updateAllSchedules() {
-      // 強制寫入香港時間 (UTC+8)
+      // 強制香港時間 (UTC+8)
       const now = new Date();
       const hkTimeMs = now.getTime() + (8 * 3600000);
       const hkDate = new Date(hkTimeMs);
