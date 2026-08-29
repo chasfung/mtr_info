@@ -161,9 +161,15 @@
     }
 
     async function updateAllSchedules() {
-      // 載入瞬間先寫入當前本機時間
+      // 強制指定使用香港時區 (Asia/Hong_Kong) 及 24 小時制
       const now = new Date();
-      document.getElementById('update-time').innerText = `更新: ${now.toLocaleTimeString('zh-HK', {hour12: false, hour: '2-digit', minute: '2-digit'})}`;
+      const hkTimeStr = now.toLocaleTimeString('en-GB', {
+        timeZone: 'Asia/Hong_Kong',
+        hour12: false,
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+      document.getElementById('update-time').innerText = `更新: ${hkTimeStr}`;
 
       try {
         const [ktlWha, ealHuh, tmlHuh] = await Promise.all([
@@ -201,7 +207,6 @@
       } catch (err) {}
     }
 
-    // 立即執行，不再等待字型完全載入，確保截圖能第一時間抓取最新時間
     updateAllSchedules();
   </script>
 </body>
