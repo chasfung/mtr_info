@@ -1,26 +1,37 @@
 const fs = require('fs');
+const https = require('https');
 
-// 讓 GitHub 機器人使用代理伺服器，突破香港政府的海外 IP 封鎖
+// 使用 Node.js 內建 https 模組抓取資料
+function fetchURL(url) {
+  return new Promise((resolve, reject) => {
+    https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        try {
+          resolve(JSON.parse(data));
+        } catch (e) {
+          resolve(null);
+        }
+      });
+    }).on('error', (err) => resolve(null));
+  });
+}
+
+// 代理伺服器輪詢機制
 async function fetchWithProxy(url) {
-  // 代理 1：CorsProxy
-  try {
-    const proxy1 = `https://corsproxy.io/?${encodeURIComponent(url)}`;
-    const res1 = await fetch(proxy1, { headers: { 'User-Agent': 'Mozilla/5.0' }});
-    if (res1.ok) return await res1.json();
-  } catch (e) {
-    console.log('Proxy 1 failed, trying Proxy 2...');
+  // 嘗試 CorsProxy
+  let data = await fetchURL(`https://corsproxy.io/?${encodeURIComponent(url)}`);
+  if (data) return data;
+
+  // 嘗試 AllOrigins
+  console.log('Proxy 1 failed, trying Proxy 2...');
+  let proxy2Data = await fetchURL(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`);
+  if (proxy2Data && proxy2Data.contents) {
+    try {
+      return JSON.parse(proxy2Data.contents);
+    } catch (e) {}
   }
-
-  // 代理 2：AllOrigins 備援
-  try {
-    const proxy2 = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
-    const res2 = await fetch(proxy2);
-    if (res2.ok) {
-      const wrapper = await res2.json();
-      return JSON.parse(wrapper.contents);
-    }
-  } catch (e) {}
-
   return null;
 }
 
@@ -44,7 +55,6 @@ async function fetchMTR() {
       fetchWithProxy('https://rt.data.gov.hk/v1/transport/mtr/getSchedule.php?line=TML&sta=HUH')
     ]);
 
-    // 強制寫入香港時間 (UTC+8)
     const hkTime = new Date(Date.now() + 8 * 3600000);
     const h = String(hkTime.getUTCHours()).padStart(2, '0');
     const m = String(hkTime.getUTCMinutes()).padStart(2, '0');
