@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MTR Dashboard</title>
+  <!-- 載入 Google 繁體中文字型，防止 SenseCraft 伺服器截圖出現亂碼 -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+HK:wght@500;700;900&display=swap" rel="stylesheet">
+  
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background-color: #ffffff;
+      font-family: 'Noto Sans HK', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      height: 100%;
+      padding: 1px;
+    }
+
+    .card {
+      border: 1px solid #000000;
+      border-radius: 4px;
+      padding: 0 6px;
+      background-color: #ffffff;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      height: 18.5%;
+    }
+
+    .left-box {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .line-tag {
+      font-size: 11px;
+      font-weight: 700;
+      color: #ffffff;
+      padding: 2px 5px;
+      border-radius: 3px;
+      white-space: nowrap;
+    }
+    .bg-ktl { background-color: #00af41; }
+    .bg-eal { background-color: #53b9e6; }
+    .bg-tml { background-color: #923011; }
+
+    .dest-title {
+      font-size: 14px;
+      font-weight: 900;
+      color: #000000;
+      white-space: nowrap;
+    }
+
+    .freq-info {
+      font-size: 15px;
+      font-weight: 900;
+      color: #000000;
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    .sub-text {
+      font-size: 9px;
+      color: #666666;
+      text-align: right;
+      font-weight: 700;
+      padding-right: 2px;
+      height: 4%;
+      line-height: 1;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <!-- 1. 觀塘線 -->
+    <div class="card">
+      <div class="left-box">
+        <span class="line-tag bg-ktl">觀塘線</span>
+        <span class="dest-title">往 調景嶺</span>
+      </div>
+      <div class="freq-info" id="ktl-wha-tik">約 3 分鐘</div>
+    </div>
+
+    <!-- 2. 東鐵線 往金鐘 -->
+    <div class="card">
+      <div class="left-box">
+        <span class="line-tag bg-eal">東鐵線</span>
+        <span class="dest-title">往 金鐘</span>
+      </div>
+      <div class="freq-info" id="eal-huh-adm">約 4 分鐘</div>
+    </div>
+
+    <!-- 3. 東鐵線 往邊境 -->
+    <div class="card">
+      <div class="left-box">
+        <span class="line-tag bg-eal">東鐵線</span>
+        <span class="dest-title">往 上水 / 邊境</span>
+      </div>
+      <div class="freq-info" id="eal-huh-north">約 3 分鐘</div>
+    </div>
+
+    <!-- 4. 屯馬線 往屯門 -->
+    <div class="card">
+      <div class="left-box">
+        <span class="line-tag bg-tml">屯馬線</span>
+        <span class="dest-title">往 屯門</span>
+      </div>
+      <div class="freq-info" id="tml-huh-tum">約 3 分鐘</div>
+    </div>
+
+    <!-- 5. 屯馬線 往烏溪沙 -->
+    <div class="card">
+      <div class="left-box">
+        <span class="line-tag bg-tml">屯馬線</span>
+        <span class="dest-title">往 烏溪沙</span>
+      </div>
+      <div class="freq-info" id="tml-huh-wks">約 4 分鐘</div>
+    </div>
+
+    <div class="sub-text" id="update-time">更新: 10:00</div>
+  </div>
+
+  <script>
+    async function fetchMTR(line, station) {
+      const url = `https://rt.data.gov.hk/v1/transport/mtr/getSchedule.php?line=${line}&sta=${station}`;
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        const response = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        const data = await response.json();
+        if (data.status === 1 && data.data[`${line}-${station}`]) {
+          return data.data[`${line}-${station}`];
+        }
+      } catch (e) {}
+      return null;
+    }
+
+    function calculateFrequency(trainList) {
+      if (!trainList || trainList.length < 2) return null;
+      const t1 = parseInt(trainList[0].ttnt);
+      const t2 = parseInt(trainList[1].ttnt);
+      if (!isNaN(t1) && !isNaN(t2)) {
+        const diff = Math.abs(t2 - t1);
+        if (diff > 0) return `約 ${diff} 分鐘`;
+      }
+      return null;
+    }
+
+    async function updateAllSchedules() {
+      try {
+        const [ktlWha, ealHuh, tmlHuh] = await Promise.all([
+          fetchMTR('KTL', 'WHA'),
+          fetchMTR('EAL', 'HUH'),
+          fetchMTR('TML', 'HUH')
+        ]);
+
+        if (ktlWha && ktlWha.UP) {
+          const res = calculateFrequency(ktlWha.UP);
+          if (res) document.getElementById('ktl-wha-tik').innerText = res;
+        }
+
+        if (ealHuh) {
+          if (ealHuh.DOWN) {
+            const res = calculateFrequency(ealHuh.DOWN);
+            if (res) document.getElementById('eal-huh-adm').innerText = res;
+          }
+          if (ealHuh.UP) {
+            const res = calculateFrequency(ealHuh.UP);
+            if (res) document.getElementById('eal-huh-north').innerText = res;
+          }
+        }
+
+        if (tmlHuh) {
+          if (tmlHuh.UP) {
+            const res = calculateFrequency(tmlHuh.UP);
+            if (res) document.getElementById('tml-huh-tum').innerText = res;
+          }
+          if (tmlHuh.DOWN) {
+            const res = calculateFrequency(tmlHuh.DOWN);
+            if (res) document.getElementById('tml-huh-wks').innerText = res;
+          }
+        }
+
+        const now = new Date();
+        document.getElementById('update-time').innerText = `更新: ${now.toLocaleTimeString('zh-HK', {hour12: false, hour: '2-digit', minute: '2-digit'})}`;
+      } catch (err) {}
+    }
+
+    // 等待中文字型載入完畢後即時獲取最新 API 數據
+    document.fonts.ready.then(() => {
+      updateAllSchedules();
+    });
+  </script>
+</body>
+</html>
