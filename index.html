@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>MTR Dashboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -22,29 +25,46 @@
 </head>
 <body>
   <div class="container">
-    <div class="card"><div class="left-box"><span class="line-tag bg-ktl">觀塘線</span><span class="dest-title">往 調景嶺</span></div><div class="freq-info" id="ktl">約 -- 分鐘</div></div>
-    <div class="card"><div class="left-box"><span class="line-tag bg-eal">東鐵線</span><span class="dest-title">往 金鐘</span></div><div class="freq-info" id="eal-dn">約 -- 分鐘</div></div>
-    <div class="card"><div class="left-box"><span class="line-tag bg-eal">東鐵線</span><span class="dest-title">往 上水 / 邊境</span></div><div class="freq-info" id="eal-up">約 -- 分鐘</div></div>
-    <div class="card"><div class="left-box"><span class="line-tag bg-tml">屯馬線</span><span class="dest-title">往 屯門</span></div><div class="freq-info" id="tml-up">約 -- 分鐘</div></div>
-    <div class="card"><div class="left-box"><span class="line-tag bg-tml">屯馬線</span><span class="dest-title">往 烏溪沙</span></div><div class="freq-info" id="tml-dn">約 -- 分鐘</div></div>
+    <div class="card"><div class="left-box"><span class="line-tag bg-ktl">觀塘線</span><span class="dest-title">往 調景嶺</span></div><div class="freq-info" id="ktl">載入中...</div></div>
+    <div class="card"><div class="left-box"><span class="line-tag bg-eal">東鐵線</span><span class="dest-title">往 金鐘</span></div><div class="freq-info" id="eal-dn">載入中...</div></div>
+    <div class="card"><div class="left-box"><span class="line-tag bg-eal">東鐵線</span><span class="dest-title">往 上水 / 邊境</span></div><div class="freq-info" id="eal-up">載入中...</div></div>
+    <div class="card"><div class="left-box"><span class="line-tag bg-tml">屯馬線</span><span class="dest-title">往 屯門</span></div><div class="freq-info" id="tml-up">載入中...</div></div>
+    <div class="card"><div class="left-box"><span class="line-tag bg-tml">屯馬線</span><span class="dest-title">往 烏溪沙</span></div><div class="freq-info" id="tml-dn">載入中...</div></div>
     <div class="sub-text" id="update">更新: --:--</div>
   </div>
   <script>
     async function loadData() {
       try {
-        // 加入隨機數確保每次都讀取最新檔案，不被瀏覽器快取
-        const res = await fetch('mtr_data.json?t=' + new Date().getTime(), { cache: 'no-store' });
+        // 使用更強的隨機參數，確保絕不 Cache
+        const t = new Date().getTime();
+        const rand = Math.random();
+        const res = await fetch(`mtr_data.json?t=${t}&r=${rand}`, { 
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+          }
+        });
+        
         if (res.ok) {
           const data = await res.json();
-          document.getElementById('ktl').innerText = data.ktl_up;
-          document.getElementById('eal-dn').innerText = data.eal_dn;
-          document.getElementById('eal-up').innerText = data.eal_up;
-          document.getElementById('tml-up').innerText = data.tml_up;
-          document.getElementById('tml-dn').innerText = data.tml_dn;
-          document.getElementById('update').innerText = '更新: ' + data.update_time;
+          // 防呆處理：如果 JSON 裡面係 null 或 undefined，出 "--"
+          document.getElementById('ktl').innerText = data.ktl_up || '約 -- 分鐘';
+          document.getElementById('eal-dn').innerText = data.eal_dn || '約 -- 分鐘';
+          document.getElementById('eal-up').innerText = data.eal_up || '約 -- 分鐘';
+          document.getElementById('tml-up').innerText = data.tml_up || '約 -- 分鐘';
+          document.getElementById('tml-dn').innerText = data.tml_dn || '約 -- 分鐘';
+          document.getElementById('update').innerText = '更新: ' + (data.update_time || '--:--');
+        } else {
+           document.getElementById('update').innerText = '讀取失敗: ' + res.status;
         }
-      } catch(e) {}
+      } catch(e) {
+          document.getElementById('update').innerText = '讀取錯誤';
+      }
     }
+    
+    // 網頁載入即刻執行
     loadData();
   </script>
 </body>
