@@ -128,33 +128,44 @@
   </div>
 
   <script>
-    async function fetchMTR(line, station) {
-      // 移除干擾參數，還原官方乾淨網址
-      const url = `https://rt.data.gov.hk/v1/transport/mtr/getSchedule.php?line=${line}&sta=${station}`;
-      
+    // 建立帶有超時控制的抓取函數，防止在 SenseCraft 伺服器上卡死
+    async function fetchWithTimeout(url, timeoutMs) {
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), timeoutMs);
       try {
-        const res = await fetch(url, { cache: 'no-store' });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.status === 1 && data.data[`${line}-${station}`]) {
-            return data.data[`${line}-${station}`];
-          }
-        }
-      } catch (e) {}
+        const res = await fetch(url, { signal: controller.signal, cache: 'no-store' });
+        clearTimeout(id);
+        if (res.ok) return await res.json();
+      } catch (e) {
+        clearTimeout(id);
+      }
+      return null;
+    }
 
-      // 升級版代理：使用 /get 解析 JSON，避免被 SenseCraft 攔截
-      try {
-        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
-        const resProxy = await fetch(proxyUrl, { cache: 'no-store' });
-        if (resProxy.ok) {
-          const wrapper = await resProxy.json();
-          const proxyData = JSON.parse(wrapper.contents);
-          if (proxyData.status === 1 && proxyData.data[`${line}-${station}`]) {
-            return proxyData.data[`${line}-${station}`];
-          }
-        }
-      } catch (e) {}
-      
+    async function fetchMTR(line, station) {
+      const targetUrl = `https://rt.data.gov.hk/v1/transport/mtr/getSchedule.php?line=${line}&sta=${station}`;
+      let data = null;
+
+      // 1. 第一階段：嘗試直連 (極速限時 1.5 秒，失敗立刻換 Proxy)
+      data = await fetchWithTimeout(targetUrl, 1500);
+      if (data && data.status === 1 && data.data[`${line}-${station}`]) {
+        return data.data[`${line}-${station}`];
+      }
+
+      // 2. 第二階段：備援代理 AllOrigins (限時 2 秒)
+      const proxy1 = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
+      data = await fetchWithTimeout(proxy1, 2000);
+      if (data && data.status === 1 && data.data[`${line}-${station}`]) {
+        return data.data[`${line}-${station}`];
+      }
+
+      // 3. 第三階段：備援代理 CorsProxy (限時 2 秒)
+      const proxy2 = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+      data = await fetchWithTimeout(proxy2, 2000);
+      if (data && data.status === 1 && data.data[`${line}-${station}`]) {
+        return data.data[`${line}-${station}`];
+      }
+
       return null;
     }
 
@@ -168,10 +179,11 @@
         const diff = Math.abs(t2 - t1);
         if (diff > 0) return `約 ${diff} 分鐘`;
       }
-      return `約 ${trainList[0].ttnt} 分鐘`; // 算術失敗時退回顯示下一班車
+      return `約 ${trainList[0].ttnt} 分鐘`;
     }
 
     async function updateAllSchedules() {
+      // 強制寫入香港時間 (UTC+8)
       const now = new Date();
       const hkTimeMs = now.getTime() + (8 * 3600000);
       const hkDate = new Date(hkTimeMs);
