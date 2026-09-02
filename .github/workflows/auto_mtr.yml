@@ -19,7 +19,7 @@ jobs:
           node-version: "18"
       - name: Run Fetch Script
         run: node update_mtr.js
-- name: Commit and Push
+      - name: Commit and Push
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
